@@ -1,310 +1,314 @@
+import mongoose from "mongoose";
 import MilkSale from "../models/MilkSale.js";
-import { paginate } from "../utils/paginate.js";
 import MilkStock from "../models/MilkStock.js";
 import User from "../models/User.js";
 import Worker from "../models/Worker.js";
-import mongoose from "mongoose";
+import { paginate } from "../utils/paginate.js";
 
 /* =========================================================
-   HELPER: RESOLVE REAL ADMIN ID
+   HELPER: RESOLVE REAL ADMIN
 ========================================================= */
 const resolveAdmin = async (req) => {
-    if (req.role === "admin") {
-        return req.id;
-    }
+    if (req.role === "admin") return req.id;
+
     if (req.role === "worker") {
         const worker = await Worker.findById(req.id);
         if (!worker) throw new Error("Worker not found");
         return worker.createdBy;
     }
+
     throw new Error("Unauthorized");
 };
 
 /* =========================================================
-   GET ALL MILK SALES (ADMIN + WORKER)
+   GET ALL MILK SALES
 ========================================================= */
 export const allMilkSell = async (req, res) => {
     try {
         const { limit, page } = req.query;
 
         const adminId = await resolveAdmin(req);
-        const adminObjectId = new mongoose.Types.ObjectId(adminId);
 
         const data = await paginate(
             MilkSale,
-            { createdBy: adminObjectId },
+            { createdBy: adminId },
             {
                 page,
                 limit,
                 sort: { createdAt: -1 },
                 populate: [
-                    {
-                        path: "user",
-                        select: "name phone address",
-                    },
-                    {
-                        path: "givenBy",
-                        select: "name role",
-                    },
+                    { path: "user", select: "name phone address" },
+                    { path: "givenBy", select: "name role" },
                 ],
             }
         );
 
-        res.json({
-            success: true,
-            message: "MilkSell Data fetched successfully",
-            ...data,
-        });
-
-    } catch (error) {
-        console.error("ALL MILK SELL ERROR:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Server error",
-        });
+        res.json({ success: true, ...data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
 /* =========================================================
-   ADD MILK SALE (ADMIN + WORKER)
+   ADD MILK SELL (TX SAFE)
 ========================================================= */
 export const addMilkSell = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-        const {
-            user,
-            date,
-            morningYield,
-            eveningYield,
-            quantity,
-            pricePerLiter,
-            totalPrice,
-            paymentStatus,
-        } = req.body;
+        const { user, quantity, pricePerLiter, totalPrice, paymentStatus, date } = req.body;
 
-        if (!user || !quantity || !pricePerLiter) {
-            return res.status(400).json({
-                success: false,
-                message: "Missing required fields",
-            });
-        }
+        const adminId = await resolveAdmin(req);
 
-        let adminId;
-        let givenBy;
+        // Check customer
+        const customer = await User.findOne({ _id: user, createdBy: adminId }).session(session);
+        if (!customer) throw new Error("Customer not found");
 
-        if (req.role === "admin") {
-            adminId = req.id;
-            givenBy = req.id;
-        } else if (req.role === "worker") {
-            const worker = await Worker.findById(req.id);
-            if (!worker) {
-                return res.status(404).json({ success: false, message: "Worker not found" });
-            }
-            adminId = worker.createdBy;
-            givenBy = worker._id;
-        } else {
-            return res.status(403).json({ success: false, message: "Unauthorized" });
-        }
-
-        const adminObjectId = new mongoose.Types.ObjectId(adminId);
-        const givenByObjectId = new mongoose.Types.ObjectId(givenBy);
-
-        // Check customer belongs to this admin
-        const customer = await User.findOne({
-            _id: user,
-            createdBy: adminObjectId
-        });
-
-        if (!customer) {
-            return res.status(404).json({
-                success: false,
-                message: "Customer not found",
-            });
-        }
-
-        // Get stock
-        let stock = await MilkStock.findOne({ createdBy: adminObjectId });
-
-        if (!stock) {
-            stock = await MilkStock.create({
-                createdBy: adminObjectId,
-                totalMilk: 0,
-            });
-        }
-
-        if (stock.totalMilk < quantity) {
-            return res.status(400).json({
-                success: false,
-                message: "Not enough milk in stock",
-            });
-        }
+        // Check stock
+        const stock = await MilkStock.findOne({ createdBy: adminId }).session(session);
+        if (!stock || stock.totalMilk < quantity) throw new Error("Not enough stock");
 
         // Create sale
-        const sale = await MilkSale.create({
+        const sale = await MilkSale.create([{
             user,
-            date,
-            morningYield,
-            eveningYield,
             quantity,
             pricePerLiter,
             totalPrice,
             paymentStatus,
-            givenBy: givenByObjectId,
-            createdBy: adminObjectId,
-        });
+            date,
+            givenBy: req.id,
+            createdBy: adminId,
+        }], { session });
 
         // Decrease stock
-        await MilkStock.updateOne(
-            { createdBy: adminObjectId },
-            { $inc: { totalMilk: -quantity } }
+        await MilkStock.findOneAndUpdate(
+            { createdBy: adminId },
+            { $inc: { totalMilk: -quantity } },
+            { session }
         );
 
         // Update customer
-        await User.updateOne(
-            { _id: user, createdBy: adminObjectId },
+        await User.findOneAndUpdate(
+            { _id: user, createdBy: adminId },
             {
                 $inc: {
                     totalMilkTaken: quantity,
                     totalAmount: totalPrice,
                 },
-            }
+            },
+            { session }
         );
 
-        res.status(201).json({
-            success: true,
-            message: "Milk sold successfully",
-            data: sale,
-        });
+        await session.commitTransaction();
 
-    } catch (error) {
-        console.error("ADD MILK SELL ERROR:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Server error",
-        });
+        res.status(201).json({ success: true, data: sale[0] });
+
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(400).json({ success: false, message: err.message });
+    } finally {
+        session.endSession();
     }
 };
 
 /* =========================================================
-   GET SINGLE MILK SALE (ADMIN + WORKER)
-========================================================= */
-export const single = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const adminId = await resolveAdmin(req);
-        const adminObjectId = new mongoose.Types.ObjectId(adminId);
-
-        const data = await MilkSale.findOne({
-            _id: id,
-            createdBy: adminObjectId,
-        }).populate("user", "name phone address");
-
-        if (!data) {
-            return res.status(404).json({ success: false, message: "Record not found" });
-        }
-
-        res.json({
-            success: true,
-            message: "Record fetched",
-            data,
-        });
-
-    } catch (error) {
-        console.error("GET SINGLE MILK SELL ERROR:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Server error",
-        });
-    }
-};
-
-/* =========================================================
-   EDIT MILK SALE (ADMIN + WORKER)
+   EDIT MILK SELL (DIFF LOGIC)
 ========================================================= */
 export const editMilkSell = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { id } = req.params;
 
         const adminId = await resolveAdmin(req);
         const adminObjectId = new mongoose.Types.ObjectId(adminId);
 
-        const data = await MilkSale.findOne({
+        // ================= FIND OLD RECORD =================
+        const oldRecord = await MilkSale.findOne({
             _id: id,
             createdBy: adminObjectId,
-        });
+        }).session(session);
 
-        if (!data) {
-            return res.status(404).json({ success: false, message: "Record not found" });
+        if (!oldRecord) {
+            throw new Error("Record not found");
         }
 
-        const newData = await MilkSale.findOneAndUpdate(
+        const oldQty = Number(oldRecord.quantity || 0);
+        const oldPrice = Number(oldRecord.totalPrice || 0);
+
+        // ================= NEW VALUES =================
+        const newQty = Number(req.body.quantity ?? oldRecord.quantity);
+        const newPrice = Number(req.body.totalPrice ?? oldRecord.totalPrice);
+
+        if (isNaN(newQty) || newQty <= 0) {
+            throw new Error("Invalid quantity");
+        }
+
+        // ================= DIFF =================
+        const diff = newQty - oldQty; // + = more sale, - = less sale
+
+        // ================= CHECK STOCK IF INCREASING SALE =================
+        if (diff > 0) {
+            const stock = await MilkStock.findOne({ createdBy: adminObjectId }).session(session);
+
+            if (!stock || stock.totalMilk < diff) {
+                throw new Error("Not enough stock");
+            }
+        }
+
+        // ================= UPDATE SALE =================
+        const updatedSale = await MilkSale.findOneAndUpdate(
             { _id: id, createdBy: adminObjectId },
-            req.body,
-            { new: true }
+            {
+                ...req.body,
+                quantity: newQty,
+                totalPrice: newPrice,
+            },
+            { new: true, runValidators: true, session }
         );
+
+        // ================= UPDATE STOCK (100% GUARANTEED) =================
+        if (diff !== 0) {
+            const stockDoc = await MilkStock.findOne({ createdBy: adminObjectId }).session(session);
+
+            // console.log("FOUND STOCK DOC:", stockDoc);
+
+            if (!stockDoc) {
+                throw new Error("❌ Stock document not found for this admin");
+            }
+
+            const before = stockDoc.totalMilk;
+
+            stockDoc.totalMilk = Number(stockDoc.totalMilk) - Number(diff);
+
+            await stockDoc.save({ session });
+
+            // console.log(`✅ STOCK UPDATED: ${before} → ${stockDoc.totalMilk}`);
+        }
+
+
+        // ================= UPDATE CUSTOMER TOTAL =================
+        const priceDiff = newPrice - oldPrice;
+
+        await User.findOneAndUpdate(
+            { _id: oldRecord.user, createdBy: adminObjectId },
+            {
+                $inc: {
+                    totalMilkTaken: diff,
+                    totalAmount: priceDiff,
+                },
+            },
+            { session }
+        );
+
+        await session.commitTransaction();
 
         res.json({
             success: true,
-            message: "Data updated",
-            data: newData,
+            message: "Milk sell updated successfully",
+            data: updatedSale,
         });
 
     } catch (error) {
-        console.error("EDIT MILK SELL ERROR:", error);
-        res.status(500).json({
+        await session.abortTransaction();
+        console.error("❌ UPDATE MILK SELL ERROR:", error);
+        res.status(400).json({
             success: false,
-            message: error.message || "Server error",
+            message: error.message || "Update failed",
         });
+    } finally {
+        session.endSession();
     }
 };
 
+
 /* =========================================================
-   DELETE MILK SALE (ADMIN + WORKER) + STOCK ROLLBACK
+   DELETE MILK SELL (ONLY WITHIN 12 HOURS)
 ========================================================= */
 export const deleteMilkSell = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { id } = req.params;
 
         const adminId = await resolveAdmin(req);
-        const adminObjectId = new mongoose.Types.ObjectId(adminId);
 
-        const data = await MilkSale.findOne({
+        const sale = await MilkSale.findOne({
             _id: id,
-            createdBy: adminObjectId,
-        });
+            createdBy: adminId,
+        }).session(session);
 
-        if (!data) {
-            return res.status(404).json({ success: false, message: "Record not found" });
+        if (!sale) throw new Error("Record not found");
+
+        // ⏱️ 12 hours rule
+        const now = new Date();
+        const created = new Date(sale.createdAt);
+        const diffHours = (now - created) / (1000 * 60 * 60);
+
+        if (diffHours > 12) {
+            throw new Error("Cannot delete after 12 hours");
         }
 
+        const qty = Number(sale.quantity);
+        const price = Number(sale.totalPrice);
+
         // Rollback stock
-        await MilkStock.updateOne(
-            { createdBy: adminObjectId },
-            { $inc: { totalMilk: data.quantity } }
+        await MilkStock.findOneAndUpdate(
+            { createdBy: adminId },
+            { $inc: { totalMilk: qty } },
+            { session }
         );
 
-        await MilkSale.deleteOne({
-            _id: id,
-            createdBy: adminObjectId,
-        });
+        // Rollback customer
+        await User.findOneAndUpdate(
+            { _id: sale.user, createdBy: adminId },
+            {
+                $inc: {
+                    totalMilkTaken: -qty,
+                    totalAmount: -price,
+                },
+            },
+            { session }
+        );
 
-        res.json({
-            success: true,
-            message: "Data deleted",
-        });
+        // Delete sale
+        await MilkSale.deleteOne({ _id: id }).session(session);
 
-    } catch (error) {
-        console.error("DELETE MILK SELL ERROR:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Server error",
-        });
+        await session.commitTransaction();
+
+        res.json({ success: true, message: "Deleted successfully" });
+
+    } catch (err) {
+        await session.abortTransaction();
+        res.status(400).json({ success: false, message: err.message });
+    } finally {
+        session.endSession();
     }
 };
 
 /* =========================================================
-   USER MILK HISTORY (ADMIN + WORKER)
+   GET SINGLE SALE
 ========================================================= */
+export const singleMilkSell = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const adminId = await resolveAdmin(req);
+
+        const data = await MilkSale.findOne({
+            _id: id,
+            createdBy: adminId,
+        }).populate("user", "name phone address");
+
+        if (!data) return res.status(404).json({ success: false, message: "Not found" });
+
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
 export const getUserMilkHistory = async (req, res) => {
     try {
         const { id } = req.params; // 👈 THIS IS USER ID
@@ -370,4 +374,3 @@ export const getUserMilkHistory = async (req, res) => {
         });
     }
 };
-

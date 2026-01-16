@@ -7,12 +7,12 @@ export const isLogin = (req, res, next) => {
         // ✅ MUST BE let (not const)
         let token = authHeader?.split(" ")[1];
 
-        console.log("TOKEN FROM HEADER:", token);
+        // console.log("TOKEN FROM HEADER:", token);
 
         // ✅ For PDF / CSV downloads
         if (!token && req.query.token) {
             token = req.query.token;
-            console.log("TOKEN FROM QUERY:", token);
+            // console.log("TOKEN FROM QUERY:", token);
         }
 
         if (!token) {
@@ -24,7 +24,7 @@ export const isLogin = (req, res, next) => {
 
         
         const tokenData = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("AUTH TOKEN RECEIVED:", tokenData);
+        // console.log("AUTH TOKEN RECEIVED:", tokenData);
 
         req.id = tokenData.id;
         req.role = tokenData.role;

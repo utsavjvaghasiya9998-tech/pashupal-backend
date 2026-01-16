@@ -5,7 +5,7 @@ import {
     deleteMilkSell,
     editMilkSell,
     getUserMilkHistory,
-    single
+    singleMilkSell
 } from "../controller/MilkSellController.js";
 import { isLogin } from "../middleware/auth.js";
 
@@ -17,6 +17,6 @@ router.post("/add", isLogin,addMilkSell);
 router.get("/user/:id",isLogin, getUserMilkHistory);
 router.put("/edit/:id",isLogin, editMilkSell);
 router.delete("/delete/:id",isLogin, deleteMilkSell);
-router.get("/:id",isLogin, single);
+router.get("/:id",isLogin, singleMilkSell);
 
 export default router;
