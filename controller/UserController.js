@@ -62,8 +62,35 @@ export const adminLogin = async (req, res) => {
 // ==========================
 export const adminDashboard = async (req, res) => {
     try {
-        const adminId = req.id;
-        console.log("admin",adminId);
+        let adminId;
+
+        console.log("REQ ID:", req.id);
+        console.log("REQ ROLE:", req.role);
+
+        // ✅ If admin logged in
+        if (req.role === "admin") {
+            adminId = req.id;
+        }
+
+        // ✅ If worker logged in → get his admin
+        else if (req.role === "worker") {
+            const worker = await Worker.findById(req.id);
+
+            if (!worker) {
+                return res.status(404).json({ message: "Worker not found" });
+            }
+
+            adminId = worker.createdBy; // ✅ THIS IS CORRECT
+        }
+
+        else {
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        console.log("DASHBOARD USING ADMIN ID:", adminId);
+
+        // ===================== COUNTS =====================
+
         const totalAnimals = await Animal.countDocuments({ createdBy: adminId });
         const totalWorkers = await Worker.countDocuments({ createdBy: adminId });
 
@@ -91,7 +118,12 @@ export const adminDashboard = async (req, res) => {
 
         const expenseAgg = await Expense.aggregate([
             { $match: { createdBy: adminId } },
-            { $group: { _id: null, total: { $sum: "$amount" } } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: "$amount" },
+                },
+            },
         ]);
 
         const totalExpense = expenseAgg[0]?.total || 0;
@@ -99,7 +131,9 @@ export const adminDashboard = async (req, res) => {
 
         const stock = await MilkStock.findOne({ createdBy: adminId });
         const totalStockMilk = stock?.totalMilk || 0;
-        console.log("totalAnimals",totalAnimals);
+
+        // ===================== RESPONSE =====================
+
         res.json({
             success: true,
             totalAnimals,
@@ -109,6 +143,7 @@ export const adminDashboard = async (req, res) => {
             totalStockMilk,
             totalIncome,
         });
+
     } catch (error) {
         console.error("ADMIN DASHBOARD ERROR:", error);
         res.status(500).json({
@@ -116,6 +151,7 @@ export const adminDashboard = async (req, res) => {
         });
     }
 };
+
 
 // ==========================
 // ADD USER (ADMIN ONLY)
