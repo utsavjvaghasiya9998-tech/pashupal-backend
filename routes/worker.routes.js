@@ -19,9 +19,13 @@ const router = Router();
 /* ================= WORKER (ADMIN ONLY) ================= */
 router.use(isLogin);
 
-router.post("/add", isAdmin, addWorker);
+// 🔥 FIXED ORDER — specific routes FIRST
+router.get("/totalmilk", isAdmin, totalMilk);
 router.get("/all", isAdmin, allWorker);
-router.get("/:id", isAdmin, singleData);
+
+router.post("/add", isAdmin, addWorker);
+
+router.get("/:id", isAdmin, singleData);   // ⚠️ must be AFTER fixed routes
 router.put("/edit/:id", isAdmin, updateWorker);
 router.delete("/delete/:id", isAdmin, deleteWorker);
 
@@ -31,7 +35,6 @@ router.delete("/delete/:id", isAdmin, deleteWorker);
 router.post("/milk/add", addMilk);
 
 // Admin only
-router.get("/milk/all", isAdmin, totalMilk);
 router.get("/milk/:id", isAdmin, single);
 router.put("/milk/edit/:id", isAdmin, updateMilk);
 router.delete("/milk/delete/:id", isAdmin, deleteMilk);

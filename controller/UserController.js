@@ -63,7 +63,7 @@ export const adminLogin = async (req, res) => {
 export const adminDashboard = async (req, res) => {
     try {
         const adminId = req.id;
-
+        console.log("admin",adminId);
         const totalAnimals = await Animal.countDocuments({ createdBy: adminId });
         const totalWorkers = await Worker.countDocuments({ createdBy: adminId });
 
@@ -99,7 +99,7 @@ export const adminDashboard = async (req, res) => {
 
         const stock = await MilkStock.findOne({ createdBy: adminId });
         const totalStockMilk = stock?.totalMilk || 0;
-
+        console.log("totalAnimals",totalAnimals);
         res.json({
             success: true,
             totalAnimals,
