@@ -13,19 +13,17 @@ const milkSaleSchema = new mongoose.Schema(
             default: Date.now,
         },
 
-        quantity: {
-            type: Number, // liters
-        },
+        quantity: Number,
+
         morningYield: Number,
         eveningYield: Number,
+
         pricePerLiter: {
             type: Number,
             required: true,
         },
 
-        totalPrice: {
-            type: Number,
-        },
+        totalPrice: Number,
 
         givenBy: {
             type: mongoose.Schema.Types.ObjectId,
@@ -36,6 +34,13 @@ const milkSaleSchema = new mongoose.Schema(
             type: String,
             enum: ["paid", "unpaid"],
             default: "paid",
+        },
+
+        // ✅ VERY IMPORTANT
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Admin",
+            required: true,
         },
     },
     { timestamps: true }

@@ -1,81 +1,103 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
-import Animal from '../models/Animal.js';
-import MilkRecord from '../models/MilkRecord.js';
-import Worker from '../models/Worker.js';
-import User from '../models/User.js';
-import { paginate } from '../utils/paginate.js';
-import MilkStock from '../models/MilkStock.js';
-import MilkSale from '../models/MilkSale.js';
-import Expense from '../models/Expense.js';
+import Animal from "../models/Animal.js";
+import MilkRecord from "../models/MilkRecord.js";
+import Worker from "../models/Worker.js";
+import User from "../models/User.js";
+import { paginate } from "../utils/paginate.js";
+import MilkStock from "../models/MilkStock.js";
+import MilkSale from "../models/MilkSale.js";
+import Expense from "../models/Expense.js";
 
-
-// admin Register
+// ==========================
+// ADMIN REGISTER
+// ==========================
 export const adminRegister = async (req, res) => {
     try {
-        const RegisterData = await Admin.create(req.body);
-        res.json({ RegisterData })
+        const admin = await Admin.create(req.body);
+        res.json({ success: true, data: admin });
     } catch (error) {
-        res.status(500).json({ message: "Internal Server Error", error })
+        res.status(500).json({ message: "Internal Server Error", error });
     }
-}
-// admin Register
+};
+
+// ==========================
+// ADMIN LOGIN
+// ==========================
 export const adminLogin = async (req, res) => {
     try {
         const { email, password } = req.body;
 
         const data = await Admin.findOne({ email });
-        if (!data) return res.status(400).json({ success: false, message: "User Not Found" });
+        if (!data)
+            return res
+                .status(400)
+                .json({ success: false, message: "User Not Found" });
 
         const isMatch = await bcrypt.compare(password, data.password);
-        if (!isMatch) return res.status(400).json({ success: false, message: "Invalid Password!" });
+        if (!isMatch)
+            return res
+                .status(400)
+                .json({ success: false, message: "Invalid Password!" });
 
         const token = jwt.sign(
             { id: data._id, role: data.role, name: data.name },
             process.env.JWT_SECRET,
             { expiresIn: "24h" }
         );
+
         res.json({
-            success: true, message: "Login Successfull",
-            data: { id: data._id, name: data.name, role: data.role, token }
-        })
+            success: true,
+            message: "Login Successful",
+            data: { id: data._id, name: data.name, role: data.role, token },
+        });
     } catch (error) {
-        res.status(500).json({ message: "Internal Server Error", error })
+        res.status(500).json({ message: "Internal Server Error", error });
     }
-}
-// admin Dashboard
+};
+
+// ==========================
+// ADMIN DASHBOARD (ADMIN ONLY)
+// ==========================
 export const adminDashboard = async (req, res) => {
     try {
+        const adminId = req.id;
 
-        const totalAnimals = await Animal.countDocuments();
-        const totalWorkers = await Worker.countDocuments();
+        const totalAnimals = await Animal.countDocuments({ createdBy: adminId });
+        const totalWorkers = await Worker.countDocuments({ createdBy: adminId });
+
         const milkQtyAgg = await MilkRecord.aggregate([
+            { $match: { createdBy: adminId } },
             {
                 $group: {
                     _id: null,
-                    totalMilk: { $sum: "$totalYield" }
-                }
-            }
+                    totalMilk: { $sum: "$totalYield" },
+                },
+            },
         ]);
 
         const totalMilk = milkQtyAgg[0]?.totalMilk || 0;
+
         const totalIncomeAgg = await MilkSale.aggregate([
+            { $match: { createdBy: adminId } },
             {
                 $group: {
                     _id: null,
-                    total: { $sum: "$totalPrice" }
-                }
-            }
+                    total: { $sum: "$totalPrice" },
+                },
+            },
         ]);
+
         const expenseAgg = await Expense.aggregate([
+            { $match: { createdBy: adminId } },
             { $group: { _id: null, total: { $sum: "$amount" } } },
         ]);
-        
+
         const totalExpense = expenseAgg[0]?.total || 0;
         const totalIncome = totalIncomeAgg[0]?.total || 0;
 
-        const stock = await MilkStock.findOne();
+        const stock = await MilkStock.findOne({ createdBy: adminId });
         const totalStockMilk = stock?.totalMilk || 0;
 
         res.json({
@@ -85,9 +107,8 @@ export const adminDashboard = async (req, res) => {
             totalExpense,
             totalMilk,
             totalStockMilk,
-            totalIncome
+            totalIncome,
         });
-
     } catch (error) {
         console.error("ADMIN DASHBOARD ERROR:", error);
         res.status(500).json({
@@ -96,102 +117,155 @@ export const adminDashboard = async (req, res) => {
     }
 };
 
-
-
-
-// User
+// ==========================
+// ADD USER (ADMIN ONLY)
+// ==========================
 export const addUser = async (req, res) => {
     try {
-        const data = await User.create(req.body);
+        const user = await User.create({
+            ...req.body,
+            createdBy: req.id, // 🔥 FORCE ADMIN ID
+        });
+
         res.json({
-            message: "User Added Successfull..!",
+            message: "User Added Successfully!",
             success: true,
-            data
-        })
+            data: user,
+        });
     } catch (error) {
-        console.error("ERROR:", error);
+        console.error("ADD USER ERROR:", error);
         res.status(500).json({
             message: "Internal server error",
         });
     }
-}
+};
+
+// ==========================
+// GET ALL USERS (ADMIN ONLY)
+// ==========================
 export const allUser = async (req, res) => {
     try {
         const { page, limit } = req.query;
-        const data = await paginate(User, {}, {
-            page,
-            limit,
-            sort: { createdAt: -1 },
-        });
-        if (!data) return res.status(400).json({ message: 'Data Not Found..!' });
+
+        const data = await paginate(
+            User,
+            { createdBy: req.id }, // 🔥 ONLY OWN USERS
+            {
+                page,
+                limit,
+                sort: { createdAt: -1 },
+            }
+        );
+
         res.json({
-            message: "Data Fetch Successfully...!",
+            message: "Data Fetch Successfully!",
             success: true,
-            ...data
-        })
+            ...data,
+        });
     } catch (error) {
-        console.error("ERROR:", error);
+        console.error("ALL USER ERROR:", error);
         res.status(500).json({
             message: "Internal server error",
         });
     }
-}
+};
+
+// ==========================
+// EDIT USER (ADMIN ONLY)
+// ==========================
 export const editUser = async (req, res) => {
     try {
-        const { id } = req.params
-        const data = await User.findById(id);
-        if (!data) return res.status(400).json({ message: 'Customer Not Found..!' });
-        const Data = await User.findByIdAndUpdate(id, req.body, { new: true });
+        const { id } = req.params;
+
+        const user = await User.findOne({
+            _id: id,
+            createdBy: req.id,
+        });
+
+        if (!user)
+            return res.status(404).json({ message: "Customer Not Found!" });
+
+        const updated = await User.findOneAndUpdate(
+            { _id: id, createdBy: req.id },
+            req.body,
+            { new: true }
+        );
+
         res.json({
-            message: "Record Updated Successfull",
+            message: "Record Updated Successfully",
             success: true,
-            Data
-        })
+            data: updated,
+        });
     } catch (error) {
-        console.error("ERROR:", error);
+        console.error("EDIT USER ERROR:", error);
         res.status(500).json({
             message: "Internal server error",
         });
     }
-}
+};
+
+// ==========================
+// DELETE USER (ADMIN ONLY)
+// ==========================
 export const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const data = await User.findById(id);
-        if (!data) return res.status(400).json({ message: 'Customer Not Found..!' });
-        await User.findByIdAndDelete(id);
+
+        const user = await User.findOne({
+            _id: id,
+            createdBy: req.id,
+        });
+
+        if (!user)
+            return res.status(404).json({ message: "Customer Not Found!" });
+
+        await User.deleteOne({ _id: id, createdBy: req.id });
+
         res.json({
-            message: "Record Delete Successfull",
+            message: "Record Deleted Successfully",
             success: true,
-        })
+        });
     } catch (error) {
-        console.error("ERROR:", error);
+        console.error("DELETE USER ERROR:", error);
         res.status(500).json({
             message: "Internal server error",
         });
     }
-}
+};
+
+// ==========================
+// GET SINGLE USER (ADMIN ONLY)
+// ==========================
 export const singleUser = async (req, res) => {
     try {
-        const data = await User.findById(req.params.id);
-        if (!data) return res.status(400).json({ message: 'Data Not Found..!' });
+        const data = await User.findOne({
+            _id: req.params.id,
+            createdBy: req.id,
+        });
+
+        if (!data)
+            return res.status(404).json({ message: "Data Not Found!" });
+
         res.json({
-            message: "Data Fetch Successfully...!",
+            message: "Data Fetch Successfully!",
             success: true,
-            data
-        })
+            data,
+        });
     } catch (error) {
-        console.error("ERROR:", error);
+        console.error("SINGLE USER ERROR:", error);
         res.status(500).json({
             message: "Internal server error",
         });
     }
-}
+};
+
+// ==========================
+// USER DASHBOARD (CUSTOMER LOGIN)
+// ==========================
 export const userDashboard = async (req, res) => {
     try {
-        const userId = req.id; // from JWT middleware
+        const userId = req.id; // customer id from JWT
 
-        // Get all sales of this user
         const sales = await MilkSale.find({ user: userId });
 
         let totalMilk = 0;
@@ -216,7 +290,6 @@ export const userDashboard = async (req, res) => {
             totalAmount,
             unpaidAmount,
         });
-
     } catch (error) {
         console.error("USER DASHBOARD ERROR:", error);
         res.status(500).json({

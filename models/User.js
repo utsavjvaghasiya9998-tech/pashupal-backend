@@ -10,25 +10,24 @@ const userSchema = new mongoose.Schema(
         },
         email: {
             type: String,
-            unique: true,
             lowercase: true,
         },
-        phone: {
-            type: String,
-        },
+        phone: String,
+
         password: { type: String, required: true },
+
         role: {
             type: String,
             default: "customer"
         },
-        address: {
-            type: String,
-        },
+
+        address: String,
 
         totalMilkTaken: {
             type: Number,
             default: 0,
         },
+
         totalAmount: {
             type: Number,
             default: 0,
@@ -38,9 +37,17 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+
+        // ✅ VERY IMPORTANT
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Admin",
+            required: true,
+        },
     },
     { timestamps: true }
 );
+
 // ✅ Hash password before save
 userSchema.pre("save", async function () {
     if (!this.isModified("password")) return;
@@ -51,4 +58,5 @@ userSchema.pre("save", async function () {
 userSchema.methods.matchPassword = function (entered) {
     return bcrypt.compare(entered, this.password);
 };
+
 export default mongoose.model("User", userSchema);

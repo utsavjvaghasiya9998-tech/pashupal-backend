@@ -10,7 +10,7 @@ import { Parser } from "json2csv";
 export const milkReport = async (req, res) => {
     const { from, to } = req.query;
 
-    const filter = {};
+    const filter = { createdBy: req.id };
     if (from && to) {
         filter.date = { $gte: new Date(from), $lte: new Date(to) };
     }
@@ -28,7 +28,7 @@ export const exportMilkReportCSV = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
         if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
         const records = await MilkRecord.find(filter).populate("animal");
@@ -60,7 +60,7 @@ export const exportMilkReportPDF = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
         if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
         const records = await MilkRecord.find(filter).populate("animal");
@@ -95,7 +95,7 @@ export const exportMilkReportPDF = async (req, res) => {
 export const salesReport = async (req, res) => {
     const { from, to } = req.query;
 
-    const filter = {};
+    const filter = { createdBy: req.id };
     if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
     const data = await MilkSale.find(filter).populate("user");
@@ -118,7 +118,7 @@ export const exportSalesReportCSV = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
         if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
         const records = await MilkSale.find(filter).populate("user");
@@ -151,7 +151,7 @@ export const exportSalesReportPDF = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
         if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
         const records = await MilkSale.find(filter).populate("user");
@@ -256,7 +256,7 @@ export const expenseReport = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
 
         // ✅ FILTER USING "date" FIELD (NOT createdAt)
         if (from && to) {
@@ -296,7 +296,7 @@ export const exportExpenseReportCSV = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
         if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
         const records = await Expense.find(filter);
@@ -328,7 +328,7 @@ export const exportExpenseReportPDF = async (req, res) => {
     try {
         const { from, to } = req.query;
 
-        const filter = {};
+        const filter = { createdBy: req.id };
         if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
 
         const records = await Expense.find(filter);

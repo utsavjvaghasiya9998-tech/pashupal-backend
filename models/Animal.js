@@ -1,16 +1,10 @@
 import mongoose from "mongoose";
+
 const animalSchema = new mongoose.Schema(
   {
-    admin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
-      // required: true,
-    },
-
     tagId: {
       type: String,
       required: true,
-      unique: true, // Ear tag or QR code ID
       trim: true,
     },
 
@@ -30,9 +24,7 @@ const animalSchema = new mongoose.Schema(
       min: 0,
     },
 
-    purchaseDate: {
-      type: Date,
-    },
+    purchaseDate: Date,
 
     isPregnant: {
       type: Boolean,
@@ -51,16 +43,19 @@ const animalSchema = new mongoose.Schema(
       default: "active",
     },
 
-    profileImageUrl: {
-      type: String,
-    },
+    profileImageUrl: String,
 
-    notes: {
-      type: String,
+    notes: String,
+
+    // ✅ VERY IMPORTANT
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: true,
+      index: true,
     },
   },
-  {
-    timestamps: true, // ✅ creates createdAt & updatedAt automatically
-  }
+  { timestamps: true }
 );
+
 export default mongoose.model("Animal", animalSchema);

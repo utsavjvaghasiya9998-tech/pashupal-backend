@@ -3,13 +3,18 @@ import { addUser, allUser, deleteUser, editUser, singleUser, userDashboard } fro
 import { isAdmin } from "../middleware/isAdmin.js";
 import { isLogin } from "../middleware/auth.js";
 
-const router=Router();
+const router = Router();
 
-router.get('/all',allUser)
-router.post('/add',addUser)
-router.get("/dashboard",isLogin, userDashboard); 
-router.get('/:id',singleUser)
-router.put('/edit/:id',editUser)
-router.delete('/delete/:id',deleteUser)
+// 🔥 Admin only
+router.use(isLogin, isAdmin);
+
+router.get("/all", allUser);
+router.post("/add", addUser);
+router.get("/:id", singleUser);
+router.put("/edit/:id", editUser);
+router.delete("/delete/:id", deleteUser);
+
+// 👤 Customer dashboard (customer token)
+router.get("/dashboard", isLogin, userDashboard);
 
 export default router;

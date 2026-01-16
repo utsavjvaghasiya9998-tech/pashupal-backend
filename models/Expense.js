@@ -1,40 +1,36 @@
 import mongoose from "mongoose";
 
-const expenseSchema = new mongoose.Schema({
-    type: {
-        type: String,
-        enum: ["feed", "medicine", "cleaning", "other"],
-        required: true,
+const expenseSchema = new mongoose.Schema(
+    {
+        type: {
+            type: String,
+            enum: ["feed", "medicine", "cleaning", "other"],
+            required: true,
+        },
+
+        title: String,
+
+        amount: {
+            type: Number,
+            required: true,
+        },
+
+        date: {
+            type: Date,
+            default: Date.now,
+        },
+
+        notes: String,
+
+        // ✅ VERY IMPORTANT
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Admin",
+            required: true,
+            index: true,
+        },
     },
-
-    // animal: {
-    //     type: mongoose.Schema.Types.ObjectId,
-    //     ref: "Animal",
-    //     required: false, // some expenses may be general
-    // },
-
-    title: {
-        type: String,
-        // required: true,
-    },
-
-    amount: {
-        type: Number,
-        required: true,
-    },
-
-    date: {
-        type: Date,
-        default: Date.now,
-    },
-
-    notes: String,
-
-    addedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Admin",
-    },
-},
     { timestamps: true }
-)
-export default mongoose.model('Expense', expenseSchema);
+);
+
+export default mongoose.model("Expense", expenseSchema);

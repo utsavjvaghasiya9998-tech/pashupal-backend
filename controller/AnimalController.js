@@ -1,16 +1,22 @@
-import Animal from '../models/Animal.js';
-import { paginate } from '../utils/paginate.js';
-// Animal
+import Animal from "../models/Animal.js";
+import { paginate } from "../utils/paginate.js";
 
+// ==========================
+// GET ALL ANIMALS (ADMIN ONLY)
+// ==========================
 export const allAnimal = async (req, res) => {
     try {
         const { page, limit } = req.query;
 
-        const data = await paginate(Animal, {}, {
-            page,
-            limit,
-            sort: { createdAt: -1 },
-        });
+        const data = await paginate(
+            Animal,
+            { createdBy: req.id }, // 🔥 ONLY OWN DATA
+            {
+                page,
+                limit,
+                sort: { createdAt: -1 },
+            }
+        );
 
         res.json({
             success: true,
@@ -21,14 +27,20 @@ export const allAnimal = async (req, res) => {
         console.error("ALL ANIMAL ERROR:", error);
         res.status(500).json({ message: "Internal server error" });
     }
+};
 
-}
+// ==========================
+// GET SINGLE ANIMAL (ADMIN ONLY)
+// ==========================
 export const single = async (req, res) => {
     try {
-        const animal = await Animal.findById(req.params.id);
+        const animal = await Animal.findOne({
+            _id: req.params.id,
+            createdBy: req.id, // 🔥 SECURITY CHECK
+        });
 
         if (!animal) {
-            return res.status(404).json({ message: "animal not found" });
+            return res.status(404).json({ message: "Animal not found" });
         }
 
         res.json({
@@ -36,10 +48,14 @@ export const single = async (req, res) => {
             data: animal,
         });
     } catch (error) {
-        console.error("GET animal ERROR:", error);
+        console.error("GET ANIMAL ERROR:", error);
         res.status(500).json({ message: "Server error" });
     }
-}
+};
+
+// ==========================
+// ADD ANIMAL
+// ==========================
 export const addAnimal = async (req, res) => {
     try {
         const {
@@ -54,14 +70,20 @@ export const addAnimal = async (req, res) => {
             profileImageUrl,
             notes,
         } = req.body;
-        const exists = await Animal.findOne({ tagId });
+
+        // 🔥 Check duplicate tag ONLY for same admin
+        const exists = await Animal.findOne({
+            tagId,
+            createdBy: req.id,
+        });
+
         if (exists) {
             return res.status(400).json({
                 message: "Animal with this tagId already exists",
             });
         }
+
         const animal = await Animal.create({
-            admin: req.id, // coming from auth middleware
             tagId,
             breed,
             species,
@@ -72,46 +94,68 @@ export const addAnimal = async (req, res) => {
             currentStatus,
             profileImageUrl,
             notes,
+
+            createdBy: req.id, // 🔥 VERY IMPORTANT
         });
+
         res.status(201).json({
             success: true,
             message: "Animal added successfully",
             animal,
         });
     } catch (error) {
+        console.error("ADD ANIMAL ERROR:", error);
         res.status(500).json({
-            message: "Internal server error", error
+            message: "Internal server error",
         });
     }
-}
+};
+
+// ==========================
+// UPDATE ANIMAL (ADMIN ONLY)
+// ==========================
 export const updateAnimal = async (req, res) => {
     try {
-        // Check animal exists
-        const { id } = req.params
-        const animal = await Animal.findById(id);
+        const { id } = req.params;
+
+        // 🔥 Find only own animal
+        const animal = await Animal.findOne({
+            _id: id,
+            createdBy: req.id,
+        });
+
         if (!animal) {
             return res.status(404).json({ message: "Animal not found" });
         }
 
-        // If tagId changed, check duplicate
+        // 🔥 If tagId changed, check duplicate inside same admin
         if (req.body.tagId && req.body.tagId !== animal.tagId) {
-            const tagExists = await Animal.findOne({ tagId: req.body.tagId });
+            const tagExists = await Animal.findOne({
+                tagId: req.body.tagId,
+                createdBy: req.id,
+            });
+
             if (tagExists) {
                 return res.status(400).json({
                     message: "Another animal already uses this tagId",
                 });
             }
         }
-        const updateAnimal = await Animal.findByIdAndUpdate(id, req.body, {
-            new: true,
-            runValidators: true,
-        });
-        res.status(201).json({
-            success: true,
-            message: "Animal Updated successfully",
-            updateAnimal,
-        });
 
+        const updatedAnimal = await Animal.findOneAndUpdate(
+            { _id: id, createdBy: req.id }, // 🔥 SECURITY
+            req.body,
+            {
+                new: true,
+                runValidators: true,
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Animal updated successfully",
+            data: updatedAnimal,
+        });
     } catch (error) {
         console.error("UPDATE ANIMAL ERROR:", error);
 
@@ -127,26 +171,32 @@ export const updateAnimal = async (req, res) => {
     }
 };
 
+// ==========================
+// DELETE ANIMAL (ADMIN ONLY)
+// ==========================
 export const deleteAnimal = async (req, res) => {
     try {
-        const { id } = req.params
-        const animal = await Animal.findById(id);
+        const { id } = req.params;
+
+        const animal = await Animal.findOne({
+            _id: id,
+            createdBy: req.id, // 🔥 SECURITY
+        });
+
         if (!animal) {
             return res.status(404).json({ message: "Animal not found" });
         }
-        await Animal.findByIdAndDelete(id)
-        res.json({ success: true, messsage: "Animal Delete Successfully!" })
+
+        await Animal.deleteOne({ _id: id, createdBy: req.id });
+
+        res.json({
+            success: true,
+            message: "Animal deleted successfully",
+        });
     } catch (error) {
-        console.error("UPDATE ANIMAL ERROR:", error);
-
-        if (error.name === "ValidationError") {
-            return res.status(400).json({
-                message: error.message,
-            });
-        }
-
+        console.error("DELETE ANIMAL ERROR:", error);
         res.status(500).json({
             message: "Internal server error",
         });
     }
-}
+};
