@@ -22,14 +22,13 @@ export const isLogin = (req, res, next) => {
             });
         }
 
-        console.log("AUTH TOKEN RECEIVED:", token);
-
+        
         const tokenData = jwt.verify(token, process.env.JWT_SECRET);
+        console.log("AUTH TOKEN RECEIVED:", tokenData);
 
         req.id = tokenData.id;
         req.role = tokenData.role;
         req.fullname = tokenData.fullname;
-
         next();
     } catch (error) {
         console.error("API Auth error:", error);

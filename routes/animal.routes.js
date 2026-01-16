@@ -5,12 +5,11 @@ import { isAdmin } from "../middleware/isAdmin.js";
 
 const router = Router();
 
-router.use(isLogin, isAdmin);
+router.get("/all", isLogin, allAnimal);
+router.get("/:id", isLogin, single);
 
-router.get("/all", allAnimal);
-router.get("/:id", single);
-router.post("/add", addAnimal);
-router.put("/edit/:id", updateAnimal);
-router.delete("/delete/:id", deleteAnimal);
+router.post("/add", isLogin, isAdmin, addAnimal);
+router.put("/edit/:id", isLogin, isAdmin, updateAnimal);
+router.delete("/delete/:id", isLogin, isAdmin, deleteAnimal);
 
 export default router;

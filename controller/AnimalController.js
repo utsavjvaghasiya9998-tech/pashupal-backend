@@ -1,4 +1,5 @@
 import Animal from "../models/Animal.js";
+import Worker from "../models/Worker.js";
 import { paginate } from "../utils/paginate.js";
 
 // ==========================
@@ -6,11 +7,27 @@ import { paginate } from "../utils/paginate.js";
 // ==========================
 export const allAnimal = async (req, res) => {
     try {
+        let adminId;
+
+        if (req.role === "admin") {
+            adminId = req.id;
+        } 
+        else if (req.role === "worker") {
+            const worker = await Worker.findById(req.id);
+            if (!worker) {
+                return res.status(404).json({ message: "Worker not found" });
+            }
+            adminId = worker.createdBy;
+        } 
+        else {
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
         const { page, limit } = req.query;
 
         const data = await paginate(
             Animal,
-            { createdBy: req.id }, // 🔥 ONLY OWN DATA
+            { createdBy: adminId },  // ✅ ALWAYS ADMIN ID
             {
                 page,
                 limit,
@@ -23,6 +40,7 @@ export const allAnimal = async (req, res) => {
             message: "Animals fetched successfully",
             ...data,
         });
+
     } catch (error) {
         console.error("ALL ANIMAL ERROR:", error);
         res.status(500).json({ message: "Internal server error" });

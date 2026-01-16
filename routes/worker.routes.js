@@ -16,27 +16,26 @@ import { isAdmin } from "../middleware/isAdmin.js";
 
 const router = Router();
 
-/* ================= WORKER (ADMIN ONLY) ================= */
-router.use(isLogin);
+/* ================= MILK ROUTES (FIRST!) ================= */
+router.get("/totalmilk", isLogin,totalMilk);
 
-// 🔥 FIXED ORDER — specific routes FIRST
-router.get("/totalmilk", totalMilk);
-router.get("/all", isAdmin, allWorker);
+// Admin OR Worker
+router.get("/milk/:id", isLogin,single);
+router.post("/milk/add", isLogin,addMilk);
+router.put("/milk/edit/:id", isLogin,updateMilk);
+router.delete("/milk/delete/:id", isLogin,deleteMilk);
 
-router.post("/add", isAdmin, addWorker);
+// Milk list
 
-router.get("/:id", isAdmin, singleData);   // ⚠️ must be AFTER fixed routes
-router.put("/edit/:id", isAdmin, updateWorker);
-router.delete("/delete/:id", isAdmin, deleteWorker);
+/* ================= WORKER ROUTES ================= */
 
-/* ================= MILK ================= */
+router.get("/all", isLogin,isAdmin, allWorker);
+router.post("/add", isLogin,isAdmin, addWorker);
+router.put("/edit/:id", isLogin,isAdmin, updateWorker);
+router.delete("/delete/:id", isLogin,isAdmin, deleteWorker);
 
-// Worker OR Admin can add milk
-router.post("/milk/add", addMilk);
+/* ================= ⚠️ SINGLE WORKER (LAST!) ================= */
 
-// Admin only
-router.get("/milk/:id", single);
-router.put("/milk/edit/:id",updateMilk);
-router.delete("/milk/delete/:id",deleteMilk);
+router.get("/:id",isLogin, isAdmin, singleData);  // ⚠️ ALWAYS LAST
 
 export default router;

@@ -9,6 +9,7 @@ import { paginate } from "../utils/paginate.js";
 import MilkStock from "../models/MilkStock.js";
 import MilkSale from "../models/MilkSale.js";
 import Expense from "../models/Expense.js";
+import mongoose from "mongoose";
 
 // ==========================
 // ADMIN REGISTER
@@ -64,15 +65,13 @@ export const adminDashboard = async (req, res) => {
     try {
         let adminId;
 
-        console.log("REQ ID:", req.id);
-        console.log("REQ ROLE:", req.role);
+        // console.log("REQ ID:", req.id);
+        // console.log("REQ ROLE:", req.role);
 
-        // ✅ If admin logged in
+        // ✅ Resolve REAL ADMIN ID
         if (req.role === "admin") {
             adminId = req.id;
         }
-
-        // ✅ If worker logged in → get his admin
         else if (req.role === "worker") {
             const worker = await Worker.findById(req.id);
 
@@ -80,22 +79,30 @@ export const adminDashboard = async (req, res) => {
                 return res.status(404).json({ message: "Worker not found" });
             }
 
-            adminId = worker.createdBy; // ✅ THIS IS CORRECT
+            adminId = worker.createdBy; // 🔥 OWNER ADMIN ID
         }
-
         else {
             return res.status(403).json({ message: "Unauthorized" });
         }
 
-        console.log("DASHBOARD USING ADMIN ID:", adminId);
+        // ✅ Normalize to ObjectId (THIS FIXES YOUR BUG)
+        const adminObjectId = new mongoose.Types.ObjectId(adminId);
+
+        // console.log("DASHBOARD USING ADMIN ID:", adminObjectId);
 
         // ===================== COUNTS =====================
 
-        const totalAnimals = await Animal.countDocuments({ createdBy: adminId });
-        const totalWorkers = await Worker.countDocuments({ createdBy: adminId });
+        const totalAnimals = await Animal.countDocuments({ createdBy: adminObjectId });
+        const totalWorkers = await Worker.countDocuments({ createdBy: adminObjectId });
+
+        // ===================== TOTAL MILK =====================
 
         const milkQtyAgg = await MilkRecord.aggregate([
-            { $match: { createdBy: adminId } },
+            {
+                $match: {
+                    createdBy: adminObjectId
+                }
+            },
             {
                 $group: {
                     _id: null,
@@ -106,8 +113,10 @@ export const adminDashboard = async (req, res) => {
 
         const totalMilk = milkQtyAgg[0]?.totalMilk || 0;
 
+        // ===================== TOTAL INCOME =====================
+
         const totalIncomeAgg = await MilkSale.aggregate([
-            { $match: { createdBy: adminId } },
+            { $match: { createdBy: adminObjectId } },
             {
                 $group: {
                     _id: null,
@@ -116,8 +125,12 @@ export const adminDashboard = async (req, res) => {
             },
         ]);
 
+        const totalIncome = totalIncomeAgg[0]?.total || 0;
+
+        // ===================== TOTAL EXPENSE =====================
+
         const expenseAgg = await Expense.aggregate([
-            { $match: { createdBy: adminId } },
+            { $match: { createdBy: adminObjectId } },
             {
                 $group: {
                     _id: null,
@@ -127,9 +140,10 @@ export const adminDashboard = async (req, res) => {
         ]);
 
         const totalExpense = expenseAgg[0]?.total || 0;
-        const totalIncome = totalIncomeAgg[0]?.total || 0;
 
-        const stock = await MilkStock.findOne({ createdBy: adminId });
+        // ===================== STOCK =====================
+
+        const stock = await MilkStock.findOne({ createdBy: adminObjectId });
         const totalStockMilk = stock?.totalMilk || 0;
 
         // ===================== RESPONSE =====================
@@ -138,10 +152,10 @@ export const adminDashboard = async (req, res) => {
             success: true,
             totalAnimals,
             totalWorkers,
-            totalExpense,
             totalMilk,
             totalStockMilk,
             totalIncome,
+            totalExpense,
         });
 
     } catch (error) {
@@ -183,9 +197,31 @@ export const allUser = async (req, res) => {
     try {
         const { page, limit } = req.query;
 
+        let adminId;
+
+        // ================= RESOLVE ADMIN =================
+        if (req.role === "admin") {
+            adminId = req.id;
+        }
+        else if (req.role === "worker") {
+            const worker = await Worker.findById(req.id);
+
+            if (!worker) {
+                return res.status(404).json({ message: "Worker not found" });
+            }
+
+            adminId = worker.createdBy;
+        }
+        else {
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        const adminObjectId = new mongoose.Types.ObjectId(adminId);
+
+        // ================= FETCH USERS =================
         const data = await paginate(
             User,
-            { createdBy: req.id }, // 🔥 ONLY OWN USERS
+            { createdBy: adminObjectId }, // ✅ ALWAYS ADMIN OWNER
             {
                 page,
                 limit,
@@ -198,6 +234,7 @@ export const allUser = async (req, res) => {
             success: true,
             ...data,
         });
+
     } catch (error) {
         console.error("ALL USER ERROR:", error);
         res.status(500).json({
@@ -300,9 +337,71 @@ export const singleUser = async (req, res) => {
 // ==========================
 export const userDashboard = async (req, res) => {
     try {
-        const userId = req.id; // customer id from JWT
+        let userIdToQuery;
+        let adminId;
 
-        const sales = await MilkSale.find({ user: userId });
+        // ================= ROLE HANDLING =================
+
+        if (req.role === "customer") {
+            // Customer sees only his own dashboard
+            userIdToQuery = req.id;
+
+            const customer = await User.findById(req.id);
+            if (!customer) {
+                return res.status(404).json({ success: false, message: "Customer not found" });
+            }
+            adminId = customer.createdBy;
+        }
+        else if (req.role === "admin") {
+            // Admin can view any customer's dashboard
+            const { userId } = req.query;
+            if (!userId) {
+                return res.status(400).json({ success: false, message: "userId is required" });
+            }
+
+            userIdToQuery = userId;
+            adminId = req.id;
+        }
+        else if (req.role === "worker") {
+            // Worker can view any customer of his admin
+            const { userId } = req.query;
+            if (!userId) {
+                return res.status(400).json({ success: false, message: "userId is required" });
+            }
+
+            const worker = await Worker.findById(req.id);
+            if (!worker) {
+                return res.status(404).json({ success: false, message: "Worker not found" });
+            }
+
+            userIdToQuery = userId;
+            adminId = worker.createdBy;
+        }
+        else {
+            return res.status(403).json({ success: false, message: "Unauthorized" });
+        }
+
+        const adminObjectId = new mongoose.Types.ObjectId(adminId);
+        const userObjectId = new mongoose.Types.ObjectId(userIdToQuery);
+
+        // ================= SECURITY CHECK =================
+        const customer = await User.findOne({
+            _id: userObjectId,
+            createdBy: adminObjectId,
+        });
+
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: "Customer not found or not in your farm",
+            });
+        }
+
+        // ================= FETCH SALES =================
+        const sales = await MilkSale.find({
+            user: userObjectId,
+            createdBy: adminObjectId,
+        });
 
         let totalMilk = 0;
         let totalAmount = 0;
@@ -326,11 +425,12 @@ export const userDashboard = async (req, res) => {
             totalAmount,
             unpaidAmount,
         });
+
     } catch (error) {
         console.error("USER DASHBOARD ERROR:", error);
         res.status(500).json({
             success: false,
-            message: "Server error",
+            message: error.message || "Server error",
         });
     }
 };

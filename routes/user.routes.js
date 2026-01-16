@@ -6,15 +6,14 @@ import { isLogin } from "../middleware/auth.js";
 const router = Router();
 
 // 🔥 Admin only
-router.use(isLogin, isAdmin);
 
-router.get("/all", allUser);
-router.post("/add", addUser);
-router.get("/:id", singleUser);
-router.put("/edit/:id", editUser);
-router.delete("/delete/:id", deleteUser);
+router.get("/dashboard", isLogin, userDashboard);
+router.get("/all",isLogin, allUser);
+router.post("/add",isLogin, isAdmin, addUser);
+router.get("/:id",isLogin, isAdmin, singleUser);
+router.put("/edit/:id", isLogin, isAdmin,editUser);
+router.delete("/delete/:id",isLogin, isAdmin, deleteUser);
 
 // 👤 Customer dashboard (customer token)
-router.get("/dashboard", isLogin, userDashboard);
 
 export default router;

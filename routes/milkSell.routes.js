@@ -11,14 +11,12 @@ import { isLogin } from "../middleware/auth.js";
 
 const router = Router();
 
-// 🔥 Protect all routes
-router.use(isLogin);
 
-router.get("/all", allMilkSell);
-router.post("/add", addMilkSell);
-router.get("/user/:id", getUserMilkHistory);
-router.get("/:id", single);
-router.put("/edit/:id", editMilkSell);
-router.delete("/delete/:id", deleteMilkSell);
+router.get("/all", isLogin,allMilkSell);
+router.post("/add", isLogin,addMilkSell);
+router.get("/user/:id",isLogin, getUserMilkHistory);
+router.put("/edit/:id",isLogin, editMilkSell);
+router.delete("/delete/:id",isLogin, deleteMilkSell);
+router.get("/:id",isLogin, single);
 
 export default router;

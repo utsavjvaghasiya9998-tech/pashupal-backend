@@ -8,7 +8,7 @@ export const paginate = async (model, query = {}, options = {}) => {
     const skip = (page - 1) * limit;
 
     const total = await model.countDocuments(query);
-console.log("limit",options);
+// console.log("limit",options);
 
     let mongooseQuery = model.find(query)
         .skip(skip)
